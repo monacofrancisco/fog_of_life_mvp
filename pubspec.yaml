@@ -1,0 +1,44 @@
+name: fog_of_life_mvp
+description: Fog-of-war real-world exploration MVP in Flutter + MapLibre + Drift.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # Map & location
+  maplibre_gl: 0.22.0
+  background_locator_2: ^2.0.6
+  geolocator: ^13.0.1
+  permission_handler: ^11.3.1
+
+  # Persistence (Drift + SQLite)
+  drift: ^2.28.1
+  drift_flutter: ^0.1.0
+  sqlite3_flutter_libs: ^0.5.23
+  path_provider: ^2.1.5
+  path: ^1.9.0
+
+  # State management (simple)
+  provider: ^6.0.1
+
+  # Date/time utils
+  intl: ^0.19.0
+  
+  wakelock_plus: ^1.1.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  build_runner: ^2.4.11
+  drift_dev: ^2.28.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/styles/ultralight.json
