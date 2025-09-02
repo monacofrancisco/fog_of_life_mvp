@@ -47,9 +47,4 @@ flutter run
 ## Siguientes pasos
 - Añadir seguimiento en segundo plano (permisos Always/Background).
 - Medir batería y ajustar sampling.
-<<<<<<< HEAD
 - Cálculo de % descubierto por área administrativa.
->>>>>>> 83208a6 (init: MVP funcionando con Stadia + fog)
-=======
-- Cálculo de % descubierto por área administrativa.
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
