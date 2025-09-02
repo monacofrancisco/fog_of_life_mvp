@@ -1,10 +1,6 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
 # fog_of_life_mvp
 Fog :)
-=======
-=======
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
+
 # Fog of Life MVP (Flutter + MapLibre + Drift)
 
 Este esqueleto incluye:
