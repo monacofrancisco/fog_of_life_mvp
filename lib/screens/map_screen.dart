@@ -18,19 +18,12 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   // ----- Config -----
-<<<<<<< HEAD
   // Nivel de almacenamiento en DB (alta resolución)
   static const int _zTilesStore = 22;
   // Radio de revelado “real” en metros
   static const double _revealRadiusMeters = 40.0;
 
   // Stadia Maps style (sustituye por tu key si cambias de proyecto)
-=======
-  static const int _zTiles = 22; // tiles pequeños (puedes ajustar)
-  static const double _revealRadiusMeters = 40.0;
-
-  // Stadia Maps style (sustituye la API key)
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
   static const String _stadiaStyle =
       'https://tiles.stadiamaps.com/styles/alidade_smooth.json?api_key=54b965b4-663d-4b73-920d-8bce96d66366';
 
@@ -45,7 +38,6 @@ class _MapScreenState extends State<MapScreen> {
   // Última posición conocida (para centrar)
   Position? _lastPos;
 
-<<<<<<< HEAD
   // ---- Multi-res: control adaptativo por píxeles en pantalla ----
   // No bajar de este zoom de render. Ajusta si quieres
   static const int _minRenderZ = 18;
@@ -58,8 +50,6 @@ class _MapScreenState extends State<MapScreen> {
   // renderZ actual (el que usamos para dibujar; arranca en el almacenado)
   int _renderZ = _zTilesStore;
 
-=======
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
   // ---- Helpers matemáticos ----
   double _sinh(double x) => (math.exp(x) - math.exp(-x)) / 2.0;
 
@@ -89,12 +79,8 @@ class _MapScreenState extends State<MapScreen> {
   int _lat2tileY(double lat, int z) {
     final n = math.pow(2, z).toDouble();
     final latRad = lat * math.pi / 180.0;
-<<<<<<< HEAD
     final y =
         (1 - math.log(math.tan(latRad) + 1 / math.cos(latRad)) / math.pi) / 2 * n;
-=======
-    final y = (1 - math.log(math.tan(latRad) + 1 / math.cos(latRad)) / math.pi) / 2 * n;
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
     return y.floor();
   }
 
@@ -102,7 +88,6 @@ class _MapScreenState extends State<MapScreen> {
     final metersPerTile =
         math.cos(latDeg * math.pi / 180.0) * (2 * math.pi * 6378137.0) / math.pow(2, z);
     final tiles = (meters / metersPerTile).ceil();
-<<<<<<< HEAD
     return tiles.clamp(1, 400);
   }
 
@@ -177,16 +162,6 @@ class _MapScreenState extends State<MapScreen> {
     if (!_styleReady || _ctrl == null) return;
 
     final rows = await db.allTiles(); // almacenados a _zTilesStore
-=======
-    return tiles.clamp(1, 200);
-  }
-
-  // ---- DB -> reconstruir niebla (agujeros) ----
-  Future<void> _rebuildFogFromDb(AppDatabase db) async {
-    if (!_styleReady || _ctrl == null) return;
-
-    final rows = await db.allTiles();
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
 
     // Polígono exterior (mundo aproximado)
     final outer = <List<double>>[
@@ -197,7 +172,6 @@ class _MapScreenState extends State<MapScreen> {
       [-179.999, 85.0],
     ];
 
-<<<<<<< HEAD
     // Si targetZ == storeZ: agujeros = tiles exactos
     // Si targetZ < storeZ: agrupamos a su "parent" con right-shift (x >> k, y >> k)
     final k = (_zTilesStore - targetZ).clamp(0, 30);
@@ -215,12 +189,6 @@ class _MapScreenState extends State<MapScreen> {
       final x = int.parse(parts[0]);
       final y = int.parse(parts[1]);
       final bb = _tileBBox(x, y, targetZ);
-=======
-    // Agujeros por cada tile visitado
-    final holes = <List<List<double>>>[];
-    for (final t in rows) {
-      final bb = _tileBBox(t.x, t.y, t.z);
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
       final ring = <List<double>>[
         [bb['w']!, bb['s']!],
         [bb['e']!, bb['s']!],
@@ -248,25 +216,6 @@ class _MapScreenState extends State<MapScreen> {
     await _ctrl!.setGeoJsonSource(_srcFog, fogFc);
   }
 
-<<<<<<< HEAD
-=======
-  // ---- Revelar disco de tiles alrededor de lat/lon ----
-  Future<void> _revealDiscTiles(AppDatabase db, double lat, double lon) async {
-    final cx = _lon2tileX(lon, _zTiles);
-    final cy = _lat2tileY(lat, _zTiles);
-    final rTiles = _metersToTileRadius(_revealRadiusMeters, lat, _zTiles);
-
-    for (int dy = -rTiles; dy <= rTiles; dy++) {
-      for (int dx = -rTiles; dx <= rTiles; dx++) {
-        if (dx * dx + dy * dy <= rTiles * rTiles) {
-          await db.upsertTile(_zTiles, cx + dx, cy + dy);
-        }
-      }
-    }
-  }
-
-  // ---- Crear fuente y capa (compatible con 0.22.0) ----
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
   Future<void> _ensureFogLayer(AppDatabase db) async {
     if (_ctrl == null) return;
 
@@ -291,7 +240,6 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
 
-<<<<<<< HEAD
     // Primer render a la resolución de almacenamiento
     _renderZ = _zTilesStore;
     await _rebuildFogForRenderZ(db, _renderZ);
@@ -302,15 +250,6 @@ class _MapScreenState extends State<MapScreen> {
     _lastPos = p;
     await _revealDiscTiles(db, p.latitude, p.longitude);
     await _rebuildFogForRenderZ(db, _renderZ); // mantenemos renderZ vigente
-=======
-    await _rebuildFogFromDb(db);
-  }
-
-  Future<void> _onPosition(AppDatabase db, Position p) async {
-    _lastPos = p;
-    await _revealDiscTiles(db, p.latitude, p.longitude);
-    await _rebuildFogFromDb(db);
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
   }
 
   Future<void> _centerOnUser() async {
@@ -336,11 +275,7 @@ class _MapScreenState extends State<MapScreen> {
       body: Stack(
         children: [
           MapLibreMap(
-<<<<<<< HEAD
             styleString: _stadiaStyle, // Stadia Maps
-=======
-            styleString: _stadiaStyle, // Stadia Maps (con tu API key)
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
             initialCameraPosition: const CameraPosition(
               target: LatLng(39.448297, -0.365441), // Home!
               zoom: 17.0,
@@ -354,26 +289,11 @@ class _MapScreenState extends State<MapScreen> {
 
               // Permisos + primera posición
               await Geolocator.requestPermission();
-<<<<<<< HEAD
-=======
-              var perm = await Geolocator.checkPermission();
-if (perm == LocationPermission.denied) {
-  perm = await Geolocator.requestPermission();
-}
-if (perm == LocationPermission.whileInUse) {
-  // iOS: para subir a “Always” hay que llevar al usuario a Ajustes
-  // (iOS solo muestra el segundo diálogo después de usar la app un rato).
-  // Le abrimos ajustes si quiere.
-  // Puedes envolverlo en un diálogo tuyo si prefieres.
-  await Geolocator.openAppSettings();
-}
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
               final pos = await Geolocator.getCurrentPosition(
                 desiredAccuracy: LocationAccuracy.best,
               );
               await _onPosition(db, pos);
 
-<<<<<<< HEAD
               // Stream de posiciones (revelado continuo)
               _posSub?.cancel();
               _posSub = Geolocator.getPositionStream(
@@ -391,22 +311,6 @@ if (perm == LocationPermission.whileInUse) {
               await _maybeUpdateRenderZ(db);
             },
 
-=======
-              _posSub?.cancel();
-_posSub = Geolocator.getPositionStream(
-  locationSettings: AppleSettings(
-    accuracy: LocationAccuracy.bestForNavigation,
-    distanceFilter: 5,                       // ajusta si quieres ahorrar batería
-    allowBackgroundLocationUpdates: true,    // <- CLAVE
-    pauseLocationUpdatesAutomatically: false,
-    activityType: ActivityType.fitness,      // walking/running → menos pausas
-    showBackgroundLocationIndicator: true,   // circulito azul en status bar
-  ),
-).listen((p) async {
-  await _onPosition(db, p);
-});
-            },
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
             myLocationEnabled: true,
             compassEnabled: true,
             rotateGesturesEnabled: true,
@@ -415,11 +319,7 @@ _posSub = Geolocator.getPositionStream(
             zoomGesturesEnabled: true,
           ),
 
-<<<<<<< HEAD
           // --- UI (igual que tenías) ---
-=======
-          // --- UI ligera (recuperada) ---
->>>>>>> 83208a69b400d77fa4721ca0aef04d98ab6a8ac6
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(12),
