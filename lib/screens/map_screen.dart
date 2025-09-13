@@ -1,7 +1,6 @@
 // lib/screens/map_screen.dart
 import 'dart:async';
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
@@ -11,7 +10,6 @@ import '../data/local_db.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
-
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
@@ -20,6 +18,7 @@ class _MapScreenState extends State<MapScreen> {
   // ----- Config -----
   // Nivel de almacenamiento en DB (alta resolución)
   static const int _zTilesStore = 22;
+
   // Radio de revelado “real” en metros
   static const double _revealRadiusMeters = 40.0;
 
@@ -35,15 +34,20 @@ class _MapScreenState extends State<MapScreen> {
   StreamSubscription<Position>? _posSub;
   bool _styleReady = false;
 
-  // Última posición conocida (para centrar)
+  // Última posición conocida (para centrar si hace falta)
   Position? _lastPos;
+
+  // ---- Camera follow (bloqueo en el punto azul) ----
+  bool _follow = true; // arrancamos siguiendo para sensación "bloqueo" inmediata
 
   // ---- Multi-res: control adaptativo por píxeles en pantalla ----
   // No bajar de este zoom de render. Ajusta si quieres
   static const int _minRenderZ = 18;
+
   // Tamaño CSS base de un tile raster
   static const double _tileCssPx = 256.0;
-  // Histeresis: bajar cuando el tile del renderZ actual < 3px; subir cuando > 6px
+
+  // Histeresis: bajar cuando el tile del renderZ actual < 2px; subir cuando > 4px
   static const double _minPxDown = 2.0;
   static const double _minPxUp = 4.0;
 
@@ -80,13 +84,15 @@ class _MapScreenState extends State<MapScreen> {
     final n = math.pow(2, z).toDouble();
     final latRad = lat * math.pi / 180.0;
     final y =
-        (1 - math.log(math.tan(latRad) + 1 / math.cos(latRad)) / math.pi) / 2 * n;
+        (1 - math.log(math.tan(latRad) + 1 / math.cos(latRad)) / math.pi) / 2 *
+            n;
     return y.floor();
   }
 
   int _metersToTileRadius(double meters, double latDeg, int z) {
-    final metersPerTile =
-        math.cos(latDeg * math.pi / 180.0) * (2 * math.pi * 6378137.0) / math.pow(2, z);
+    final metersPerTile = math.cos(latDeg * math.pi / 180.0) *
+        (2 * math.pi * 6378137.0) /
+        math.pow(2, z);
     final tiles = (meters / metersPerTile).ceil();
     return tiles.clamp(1, 400);
   }
@@ -112,6 +118,7 @@ class _MapScreenState extends State<MapScreen> {
       final b = await _ctrl!.getVisibleRegion();
       final sw = b.southwest;
       final ne = b.northeast;
+
       var lonDelta = (ne.longitude - sw.longitude).abs();
       if (lonDelta <= 1e-7) lonDelta = 1e-7;
 
@@ -125,8 +132,8 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   double _tileScreenPx(double zoom, int z) {
-    return _tileCssPx * math.pow(2.0, zoom - z);
     // Intuición: si esto baja de ~1–3 px, aparece el “apagón” del agujero.
+    return _tileCssPx * math.pow(2.0, zoom - z);
   }
 
   int _pickRenderZWithHysteresis(double zoom, int currentRenderZ) {
@@ -164,7 +171,7 @@ class _MapScreenState extends State<MapScreen> {
     final rows = await db.allTiles(); // almacenados a _zTilesStore
 
     // Polígono exterior (mundo aproximado)
-    final outer = <List<double>>[
+    final List<List<double>> outer = [
       [-179.999, 85.0],
       [179.999, 85.0],
       [179.999, -85.0],
@@ -175,15 +182,14 @@ class _MapScreenState extends State<MapScreen> {
     // Si targetZ == storeZ: agujeros = tiles exactos
     // Si targetZ < storeZ: agrupamos a su "parent" con right-shift (x >> k, y >> k)
     final k = (_zTilesStore - targetZ).clamp(0, 30);
-    final holesSet = <String>{};
-
+    final Set<String> holesSet = {};
     for (final t in rows) {
       final px = (k == 0) ? t.x : (t.x >> k);
       final py = (k == 0) ? t.y : (t.y >> k);
       holesSet.add('$px:$py'); // evitamos duplicados
     }
 
-    final holes = <List<List<double>>>[];
+    final List<List<List<double>>> holes = [];
     for (final key in holesSet) {
       final parts = key.split(':');
       final x = int.parse(parts[0]);
@@ -201,7 +207,7 @@ class _MapScreenState extends State<MapScreen> {
 
     final fogPolygon = {
       'type': 'Feature',
-      'properties': <String, dynamic>{},
+      'properties': {},
       'geometry': {
         'type': 'Polygon',
         'coordinates': [outer, ...holes],
@@ -222,10 +228,10 @@ class _MapScreenState extends State<MapScreen> {
     // Fuente GeoJSON
     await _ctrl!.addSource(
       _srcFog,
-      GeojsonSourceProperties(
+      const GeojsonSourceProperties(
         data: {
           'type': 'FeatureCollection',
-          'features': <dynamic>[],
+          'features': [],
         },
       ),
     );
@@ -245,14 +251,37 @@ class _MapScreenState extends State<MapScreen> {
     await _rebuildFogForRenderZ(db, _renderZ);
   }
 
-  // ---- Position flow ----
+  // ---- Position flow (DB + niebla) ----
   Future<void> _onPosition(AppDatabase db, Position p) async {
     _lastPos = p;
     await _revealDiscTiles(db, p.latitude, p.longitude);
     await _rebuildFogForRenderZ(db, _renderZ); // mantenemos renderZ vigente
   }
 
-  Future<void> _centerOnUser() async {
+  // ---- Camera follow helpers ----
+  Future<void> _enableFollow() async {
+    if (_ctrl == null) return;
+    setState(() => _follow = true);
+    // Deja que MapLibre mueva la cámara con su animación nativa hacia el puck.
+    await _ctrl!.updateMyLocationTrackingMode(MyLocationTrackingMode.trackingGps);
+  }
+
+  Future<void> _disableFollow() async {
+    if (_ctrl == null) return;
+    setState(() => _follow = false);
+    await _ctrl!.updateMyLocationTrackingMode(MyLocationTrackingMode.none);
+  }
+
+  Future<void> _toggleFollow() async {
+    if (_follow) {
+      await _disableFollow();
+    } else {
+      await _enableFollow();
+    }
+  }
+
+  // Centrar una vez (sin activar follow)
+  Future<void> _centerOnceOnUser() async {
     final p = _lastPos;
     if (_ctrl != null && p != null) {
       await _ctrl!.animateCamera(
@@ -280,21 +309,55 @@ class _MapScreenState extends State<MapScreen> {
               target: LatLng(39.448297, -0.365441), // Home!
               zoom: 17.0,
             ),
+
+            // Hacemos el motor de localización del MAPA más “rápido” en Android
+            // (iOS no soporta esta personalización; usa defaults del SDK).
+            locationEnginePlatforms: const LocationEnginePlatforms(
+              androidPlatform: LocationEngineAndroidProperties(
+                interval: 1000, // ms
+                displacement: 0, // m
+                priority: LocationPriority.highAccuracy,
+              ),
+            ),
+
+            // Seguimiento inicial según _follow (bloqueo cámara en el punto azul)
+            myLocationEnabled: true,
+            myLocationTrackingMode:
+                _follow ? MyLocationTrackingMode.trackingGps : MyLocationTrackingMode.none,
+
+            // Callbacks de tracking (romper/actualizar estado UI)
+            onCameraTrackingDismissed: () {
+              // El usuario ha movido/rotado el mapa: salimos del "follow"
+              if (_follow) _disableFollow();
+            },
+            onCameraTrackingChanged: (_) {
+              // Mantener el estado en sincronía si el SDK lo cambia
+              setState(() {});
+            },
+
+            compassEnabled: true,
+            rotateGesturesEnabled: true,
+            scrollGesturesEnabled: true,
+            tiltGesturesEnabled: true,
+            zoomGesturesEnabled: true,
+
             onMapCreated: (c) async {
               _ctrl = c;
             },
+
             onStyleLoadedCallback: () async {
               _styleReady = true;
               await _ensureFogLayer(db);
 
               // Permisos + primera posición
               await Geolocator.requestPermission();
+
               final pos = await Geolocator.getCurrentPosition(
                 desiredAccuracy: LocationAccuracy.best,
               );
               await _onPosition(db, pos);
 
-              // Stream de posiciones (revelado continuo)
+              // Stream de posiciones (revelado continuo a z=22)
               _posSub?.cancel();
               _posSub = Geolocator.getPositionStream(
                 locationSettings: const LocationSettings(
@@ -304,19 +367,19 @@ class _MapScreenState extends State<MapScreen> {
               ).listen((p) async {
                 await _onPosition(db, p);
               });
+
+              // Si el modo seguir está activo al cargar el estilo, asegúralo en el SDK
+              if (_follow) {
+                await _ctrl!.updateMyLocationTrackingMode(
+                  MyLocationTrackingMode.trackingGps,
+                );
+              }
             },
 
             // >>> Importante: recalcular renderZ adaptativo cuando termine un gesto
             onCameraIdle: () async {
               await _maybeUpdateRenderZ(db);
             },
-
-            myLocationEnabled: true,
-            compassEnabled: true,
-            rotateGesturesEnabled: true,
-            scrollGesturesEnabled: true,
-            tiltGesturesEnabled: true,
-            zoomGesturesEnabled: true,
           ),
 
           // --- UI (igual que tenías) ---
@@ -352,15 +415,15 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
 
-          // FAB de centrar
+          // FAB: Seguir / dejar de seguir (camera-lock)
           Positioned(
             right: 16,
             bottom: 24,
             child: FloatingActionButton.extended(
-              heroTag: 'center_me',
-              onPressed: _centerOnUser,
-              icon: const Icon(Icons.my_location),
-              label: const Text('Centrar'),
+              heroTag: 'follow_toggle',
+              onPressed: _toggleFollow,
+              icon: Icon(_follow ? Icons.gps_fixed : Icons.my_location),
+              label: Text(_follow ? 'Siguiendo' : 'Seguir'),
             ),
           ),
         ],
